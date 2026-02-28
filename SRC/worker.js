@@ -406,131 +406,355 @@ const appHtml = `<!DOCTYPE html>
 </div>
 
 <script>
-  const state = { routes: [], logs: [], users: [], products: [], charts: {} };
+  const state = {
+    routes: [],
+    logs: [],
+    users: [],
+    products: [],
+    charts: {},
+    metrics: null,
+    theme: localStorage.getItem('theme') || 'dark'
+  };
+
   const $ = (id) => document.getElementById(id);
 
   const api = async (url, opts = {}) => {
     const token = sessionStorage.getItem('adminToken') || '';
-    const headers = { 'content-type': 'application/json', 'x-admin-token': token, ...(opts.headers || {}) };
+    const headers = {
+      'content-type': 'application/json',
+      'x-admin-token': token,
+      ...(opts.headers || {})
+    };
     const res = await fetch(url, { ...opts, headers });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Request gagal');
     return data;
   };
 
-  function renderIcons(){ if (window.lucide) window.lucide.createIcons(); }
+  function renderIcons() {
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+  }
 
-  function setActiveNav(name){
-    document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('bg-primary-500/10','text-primary-400','border','border-primary-500/20'));
-    const m = {dashboard:0,routes:1,analytics:2,logs:3,settings:4};
-    const t = document.querySelectorAll('.nav-item')[m[name]];
-    if (t) t.classList.add('bg-primary-500/10','text-primary-400','border','border-primary-500/20');
+  function applyTheme() {
+    document.documentElement.classList.toggle('dark', state.theme === 'dark');
+  }
+
+  window.toggleTheme = () => {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', state.theme);
+    applyTheme();
+  };
+
+  window.togglePassword = () => {
+    const input = $('adminToken');
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  };
+
+  function setActiveNav(name) {
+    const mapping = { dashboard: 0, routes: 1, analytics: 2, logs: 3, settings: 4 };
+    document.querySelectorAll('.nav-item').forEach((el) => {
+      el.classList.remove('bg-primary-500', 'bg-opacity-10', 'text-primary-400', 'border', 'border-primary-500', 'border-opacity-20');
+      el.classList.add('text-gray-300');
+    });
+
+    const target = document.querySelectorAll('.nav-item')[mapping[name]];
+    if (!target) return;
+    target.classList.add('bg-primary-500', 'bg-opacity-10', 'text-primary-400', 'border', 'border-primary-500', 'border-opacity-20');
   }
 
   window.switchTab = (name) => {
-    document.querySelectorAll('.tab-content').forEach((el) => el.classList.add('hidden'));
-    $(name + 'Tab').classList.remove('hidden');
+    document.querySelectorAll('.tab-content').forEach((tab) => tab.classList.add('hidden'));
+    const next = $(name + 'Tab');
+    if (!next) return;
+    next.classList.remove('hidden');
     $('pageTitle').textContent = name.charAt(0).toUpperCase() + name.slice(1);
     setActiveNav(name);
   };
 
-  window.logout = () => { sessionStorage.removeItem('adminToken'); location.reload(); };
-  window.openRouteModal = () => $('routeModal').classList.remove('hidden');
-  window.closeRouteModal = () => $('routeModal').classList.add('hidden');
-
-  async function refreshRoutes() {
-    const res = await api('/api/admin/routes');
-    state.routes = res.items || [];
-    $('routeCount').textContent = state.routes.length;
-
-    const search = ($('searchRoutes')?.value || '').toLowerCase();
-    const method = $('filterMethod')?.value || '';
-    const filtered = state.routes.filter((r) => (!search || r.name.toLowerCase().includes(search) || r.id.toLowerCase().includes(search)) && (!method || r.method === method));
-
-    $('routesTable').innerHTML = filtered.map((r) => '<tr class="border-t border-gray-800"><td class="px-4 py-3"><div class="font-mono text-xs">' + r.id + '</div><div>' + r.name + '</div></td><td class="font-mono text-xs">' + r.targetUrl + '</td><td>' + r.method + '</td><td>' + (r.requests || 0) + '</td><td>' + (r.active ? 'ACTIVE' : 'OFF') + '</td><td class="text-right px-4"><button onclick="removeRoute(\'' + r.id + '\')" class="px-2 py-1 bg-red-600/20 text-red-400 rounded">Delete</button></td></tr>').join('') || '<tr><td colspan="6" class="px-4 py-4 text-gray-400">Belum ada route.</td></tr>';
-  }
-
-  window.removeRoute = async (id) => { await api('/api/admin/routes/' + id, { method: 'DELETE' }); await refreshData(); };
-  window.createRoute = async () => {
-    await api('/api/admin/routes', { method: 'POST', body: JSON.stringify({ name: $('routeName').value.trim(), targetUrl: $('targetUrl').value.trim(), method: $('routeMethod').value }) });
-    closeRouteModal();
-    await refreshData();
+  window.logout = () => {
+    sessionStorage.removeItem('adminToken');
+    location.reload();
   };
 
-  async function refreshLogs() {
-    const res = await api('/api/admin/logs?limit=100');
-    state.logs = res.items || [];
-    $('logCount').textContent = state.logs.length;
-    $('logsTable').innerHTML = state.logs.map((l) => '<tr class="border-t border-gray-800"><td class="px-4 py-3">' + l.timestamp + '</td><td>' + (l.routeId || '-') + '</td><td>' + l.status + '</td><td class="text-left">' + l.message + '</td></tr>').join('') || '<tr><td colspan="4" class="px-4 py-4 text-gray-400">Belum ada log error.</td></tr>';
+  window.openModal = (id) => {
+    const modal = $(id);
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  };
+
+  window.closeModal = (id) => {
+    const modal = $(id);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  };
+
+  window.openRouteModal = () => openModal('routeModal');
+  window.closeRouteModal = () => closeModal('routeModal');
+
+  function resetChart(name) {
+    if (state.charts[name]) {
+      state.charts[name].destroy();
+      state.charts[name] = null;
+    }
   }
-  window.refreshLogs = refreshLogs;
-  window.clearLogs = async () => { await api('/api/admin/logs', { method: 'DELETE' }); await refreshLogs(); };
-
-  async function loadActivity() {
-    const metrics = await api('/api/admin/metrics');
-    $('totalRoutes').textContent = metrics.totalRoutes;
-    $('totalRequests').textContent = metrics.totalRequests;
-    $('errorRate').textContent = metrics.errorRate + '%';
-    $('avgLatency').textContent = metrics.avgLatencyMs + 'ms';
-    $('recentActivity').innerHTML = (metrics.activities || []).map((a) => '<div class="p-3 rounded bg-dark-800/70 text-sm"><div class="font-medium">' + a.title + '</div><div class="text-xs text-gray-400">' + a.timestamp + ' • ' + (a.description || '') + '</div></div>').join('') || '<div class="text-gray-400 text-sm">Belum ada aktivitas.</div>';
-
-    drawCharts(metrics);
-    $('topEndpoints').innerHTML = (metrics.topEndpoints || []).map((t) => '<div class="flex justify-between"><span class="font-mono text-xs">' + t.name + '</span><span>' + t.requests + '</span></div>').join('') || '<div class="text-gray-400 text-sm">Belum ada data.</div>';
-    $('geoDistribution').innerHTML = Object.entries(metrics.methodDistribution || {}).map(([k,v]) => '<div class="flex justify-between"><span>' + k + '</span><span>' + v + '</span></div>').join('') || '<div class="text-gray-400 text-sm">Belum ada data.</div>';
-  }
-
-  function resetChart(key){ if (state.charts[key]) { state.charts[key].destroy(); state.charts[key] = null; } }
 
   function drawCharts(metrics) {
-    const trafficData = metrics.traffic24h || [];
-    const statusData = metrics.statusDistribution || {};
+    const traffic = metrics.traffic24h || [];
+    const status = metrics.statusDistribution || {};
+    const endpoints = metrics.topEndpoints || [];
 
     resetChart('traffic');
     state.charts.traffic = new Chart($('trafficChart').getContext('2d'), {
       type: 'line',
-      data: { labels: trafficData.map((d) => d.hour), datasets: [{ label: 'Requests', data: trafficData.map((d) => d.count), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.2)', fill: true }] },
-      options: { plugins: { legend: { labels: { color: '#cbd5e1' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+      data: {
+        labels: traffic.map((x) => x.hour),
+        datasets: [{
+          label: 'Requests',
+          data: traffic.map((x) => x.count),
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+          fill: true,
+          tension: 0.35
+        }]
+      },
+      options: {
+        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' } }
+        }
+      }
     });
 
     resetChart('status');
     state.charts.status = new Chart($('statusChart').getContext('2d'), {
       type: 'doughnut',
-      data: { labels: Object.keys(statusData), datasets: [{ data: Object.values(statusData), backgroundColor: ['#22c55e', '#f59e0b', '#ef4444', '#3b82f6'] }] },
+      data: {
+        labels: Object.keys(status),
+        datasets: [{
+          data: Object.values(status),
+          backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7']
+        }]
+      },
       options: { plugins: { legend: { labels: { color: '#cbd5e1' } } } }
     });
 
     resetChart('performance');
     state.charts.performance = new Chart($('performanceChart').getContext('2d'), {
       type: 'bar',
-      data: { labels: (metrics.topEndpoints || []).map((i) => i.name), datasets: [{ label: 'Latency (ms)', data: (metrics.topEndpoints || []).map((i) => i.avgLatencyMs || 0), backgroundColor: '#8b5cf6' }] },
-      options: { plugins: { legend: { labels: { color: '#cbd5e1' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+      data: {
+        labels: endpoints.map((x) => x.name),
+        datasets: [{
+          label: 'Avg Latency (ms)',
+          data: endpoints.map((x) => x.avgLatencyMs || 0),
+          backgroundColor: '#8b5cf6'
+        }]
+      },
+      options: {
+        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.12)' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.12)' } }
+        }
+      }
     });
   }
 
-  window.loadUsers = async () => {
-    const res = await api('/api/admin/users');
-    state.users = res.items || [];
-    $('usersTable').innerHTML = state.users.map((u) => '<tr class="border-t border-gray-800"><td class="py-2">' + u.email + '</td><td>' + u.status + '</td><td>' + u.limit + '</td><td><button class="px-2 py-1 bg-green-600/20 text-green-400 rounded mr-1" onclick="approveUser(\'' + u.id + '\')">Approve</button><button class="px-2 py-1 bg-yellow-600/20 text-yellow-400 rounded mr-1" onclick="setUserLimit(\'' + u.id + '\')">Limit</button><button class="px-2 py-1 bg-red-600/20 text-red-400 rounded" onclick="deleteUserById(\'' + u.id + '\')">Hapus</button></td></tr>').join('') || '<tr><td colspan="4" class="text-gray-400 py-3">Belum ada user.</td></tr>';
-  };
-  window.approveUser = async (id) => { await api('/api/admin/users/' + id, { method: 'PATCH', body: JSON.stringify({ action: 'approve' }) }); await loadUsers(); };
-  window.setUserLimit = async (id) => { const value = prompt('Limit baru user?'); if (!value) return; await api('/api/admin/users/' + id, { method: 'PATCH', body: JSON.stringify({ action: 'set-limit', limit: Number(value) }) }); await loadUsers(); };
-  window.deleteUserById = async (id) => { await api('/api/admin/users/' + id, { method: 'DELETE' }); await loadUsers(); };
+  function fillMetrics(metrics) {
+    state.metrics = metrics;
+    $('totalRoutes').textContent = metrics.totalRoutes || 0;
+    $('totalRequests').textContent = metrics.totalRequests || 0;
+    $('errorRate').textContent = (metrics.errorRate || 0) + '%';
+    $('avgLatency').textContent = (metrics.avgLatencyMs || 0) + 'ms';
 
-  window.createProduct = async () => {
-    await api('/api/admin/products', { method: 'POST', body: JSON.stringify({ name: $('productName').value.trim(), description: $('productDesc').value.trim() }) });
-    $('productName').value = ''; $('productDesc').value = '';
-    await loadProducts();
+    $('recentActivity').innerHTML = (metrics.activities || []).map((act) =>
+      '<div class="p-3 rounded-lg bg-dark-800 border border-gray-700">' +
+        '<div class="text-sm font-medium">' + act.title + '</div>' +
+        '<div class="text-xs text-gray-400 mt-1">' + act.timestamp + ' • ' + (act.description || '') + '</div>' +
+      '</div>'
+    ).join('') || '<div class="text-sm text-gray-400">Belum ada activity.</div>';
+
+    $('topEndpoints').innerHTML = (metrics.topEndpoints || []).map((t) =>
+      '<div class="flex justify-between items-center text-sm bg-dark-800 rounded px-3 py-2 border border-gray-700">' +
+        '<span class="font-mono text-xs">' + t.name + '</span>' +
+        '<span>' + t.requests + ' req</span>' +
+      '</div>'
+    ).join('') || '<div class="text-sm text-gray-400">Belum ada data endpoint.</div>';
+
+    $('geoDistribution').innerHTML = Object.entries(metrics.methodDistribution || {}).map(([m, c]) =>
+      '<div class="flex justify-between items-center text-sm bg-dark-800 rounded px-3 py-2 border border-gray-700">' +
+        '<span>' + m + '</span>' +
+        '<span>' + c + '</span>' +
+      '</div>'
+    ).join('') || '<div class="text-sm text-gray-400">Belum ada data method.</div>';
+
+    drawCharts(metrics);
+  }
+
+  async function refreshMetrics() {
+    const metrics = await api('/api/admin/metrics');
+    fillMetrics(metrics);
+  }
+
+  async function refreshRoutes() {
+    const data = await api('/api/admin/routes');
+    state.routes = data.items || [];
+    $('routeCount').textContent = state.routes.length;
+
+    const search = (($('searchRoutes') && $('searchRoutes').value) || '').toLowerCase();
+    const filterMethod = (($('filterMethod') && $('filterMethod').value) || '').toUpperCase();
+
+    const rows = state.routes.filter((r) => {
+      const matchSearch = !search || r.name.toLowerCase().includes(search) || r.id.toLowerCase().includes(search) || (r.targetUrl || '').toLowerCase().includes(search);
+      const matchMethod = !filterMethod || r.method === filterMethod;
+      return matchSearch && matchMethod;
+    });
+
+    $('routesTable').innerHTML = rows.map((r) =>
+      '<tr class="border-t border-gray-800">' +
+        '<td class="px-6 py-3">' +
+          '<div class="font-mono text-xs text-gray-400">' + r.id + '</div>' +
+          '<div class="font-medium">' + r.name + '</div>' +
+          '<div class="font-mono text-[11px] text-primary-300 break-all">/u/' + r.id + '</div>' +
+        '</td>' +
+        '<td class="px-6 py-3"><div class="font-mono text-xs break-all">' + r.targetUrl + '</div></td>' +
+        '<td class="px-6 py-3">' + r.method + '</td>' +
+        '<td class="px-6 py-3">' + (r.active ? 'ACTIVE' : 'OFF') + '</td>' +
+        '<td class="px-6 py-3">' + (r.requests || 0) + '</td>' +
+        '<td class="text-right px-6 py-3">' +
+          '<button onclick="copyRouteToken(\'' + r.userToken + '\')" class="px-2 py-1 text-xs bg-blue-500 bg-opacity-20 text-blue-300 rounded mr-2">Token</button>' +
+          '<button onclick="removeRoute(\'' + r.id + '\')" class="px-2 py-1 text-xs bg-red-500 bg-opacity-20 text-red-300 rounded">Delete</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="6" class="px-6 py-4 text-gray-400">Belum ada route.</td></tr>';
+  }
+
+  window.copyRouteToken = async (token) => {
+    if (!token) return;
+    await navigator.clipboard.writeText(token).catch(() => null);
+    alert('Token route disalin');
+  };
+
+  window.removeRoute = async (id) => {
+    if (!confirm('Hapus route ini?')) return;
+    await api('/api/admin/routes/' + id, { method: 'DELETE' });
+    await refreshData();
+  };
+
+  window.createRoute = async () => {
+    const payload = {
+      name: $('routeName').value.trim(),
+      targetUrl: $('targetUrl').value.trim(),
+      method: $('routeMethod').value
+    };
+    await api('/api/admin/routes', { method: 'POST', body: JSON.stringify(payload) });
+    closeRouteModal();
+    $('routeName').value = '';
+    $('targetUrl').value = '';
+    $('routeMethod').value = 'ANY';
+    await refreshData();
+  };
+
+  async function refreshLogs() {
+    const data = await api('/api/admin/logs?limit=150');
+    state.logs = data.items || [];
+    $('logCount').textContent = state.logs.length;
+    $('logsTable').innerHTML = state.logs.map((l) =>
+      '<tr class="border-t border-gray-800">' +
+        '<td class="px-6 py-3 text-xs">' + l.timestamp + '</td>' +
+        '<td class="px-6 py-3 font-mono text-xs">' + (l.routeId || '-') + '</td>' +
+        '<td class="px-6 py-3 text-red-300">' + (l.status || '-') + '</td>' +
+        '<td class="px-6 py-3">' + (l.message || '-') + '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="4" class="px-6 py-4 text-gray-400">Belum ada log.</td></tr>';
+  }
+
+  window.refreshLogs = refreshLogs;
+
+  window.clearLogs = async () => {
+    if (!confirm('Hapus semua log error?')) return;
+    await api('/api/admin/logs', { method: 'DELETE' });
+    await refreshLogs();
+    await refreshMetrics();
+  };
+
+  window.loadUsers = async () => {
+    const data = await api('/api/admin/users');
+    state.users = data.items || [];
+    $('usersTable').innerHTML = state.users.map((u) =>
+      '<tr class="border-t border-gray-800">' +
+        '<td class="py-2">' + u.email + '</td>' +
+        '<td>' + u.status + '</td>' +
+        '<td>' + u.limit + ' / used ' + u.used + '</td>' +
+        '<td>' +
+          '<button onclick="approveUser(\'' + u.id + '\')" class="px-2 py-1 bg-green-500 bg-opacity-20 text-green-300 rounded mr-1 text-xs">Approve</button>' +
+          '<button onclick="setUserLimit(\'' + u.id + '\')" class="px-2 py-1 bg-yellow-500 bg-opacity-20 text-yellow-300 rounded mr-1 text-xs">Limit</button>' +
+          '<button onclick="deleteUserById(\'' + u.id + '\')" class="px-2 py-1 bg-red-500 bg-opacity-20 text-red-300 rounded text-xs">Hapus</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="4" class="py-3 text-gray-400">Belum ada user.</td></tr>';
+  };
+
+  window.approveUser = async (id) => {
+    await api('/api/admin/users/' + id, { method: 'PATCH', body: JSON.stringify({ action: 'approve' }) });
+    await loadUsers();
+    await refreshMetrics();
+  };
+
+  window.setUserLimit = async (id) => {
+    const value = prompt('Masukkan limit baru user');
+    if (!value) return;
+    await api('/api/admin/users/' + id, { method: 'PATCH', body: JSON.stringify({ action: 'set-limit', limit: Number(value) }) });
+    await loadUsers();
+  };
+
+  window.deleteUserById = async (id) => {
+    if (!confirm('Hapus user ini?')) return;
+    await api('/api/admin/users/' + id, { method: 'DELETE' });
+    await loadUsers();
+    await refreshMetrics();
   };
 
   async function loadProducts() {
-    const res = await api('/api/admin/products');
-    state.products = res.items || [];
-    $('productsList').innerHTML = state.products.map((p) => '<div class="p-3 rounded bg-dark-800/70 text-sm flex justify-between gap-3"><div><div class="font-medium">' + p.name + '</div><div class="text-gray-400 text-xs">' + (p.description || '-') + '</div></div><button onclick="deleteProduct(\'' + p.id + '\')" class="px-2 py-1 bg-red-600/20 text-red-400 rounded">Hapus</button></div>').join('') || '<div class="text-sm text-gray-400">Belum ada produk.</div>';
+    const data = await api('/api/admin/products');
+    state.products = data.items || [];
+    $('productsList').innerHTML = state.products.map((p) =>
+      '<div class="flex justify-between gap-3 p-3 rounded-lg bg-dark-800 border border-gray-700">' +
+        '<div><div class="font-medium">' + p.name + '</div><div class="text-xs text-gray-400">' + (p.description || '-') + '</div></div>' +
+        '<button onclick="deleteProduct(\'' + p.id + '\')" class="px-2 py-1 bg-red-500 bg-opacity-20 text-red-300 text-xs rounded">Hapus</button>' +
+      '</div>'
+    ).join('') || '<div class="text-sm text-gray-400">Belum ada produk.</div>';
   }
-  window.deleteProduct = async (id) => { await api('/api/admin/products/' + id, { method: 'DELETE' }); await loadProducts(); };
+
+  window.createProduct = async () => {
+    const payload = {
+      name: $('productName').value.trim(),
+      description: $('productDesc').value.trim()
+    };
+    await api('/api/admin/products', { method: 'POST', body: JSON.stringify(payload) });
+    $('productName').value = '';
+    $('productDesc').value = '';
+    await loadProducts();
+    await refreshMetrics();
+  };
+
+  window.deleteProduct = async (id) => {
+    if (!confirm('Hapus produk ini?')) return;
+    await api('/api/admin/products/' + id, { method: 'DELETE' });
+    await loadProducts();
+    await refreshMetrics();
+  };
 
   window.refreshData = async () => {
-    await Promise.all([refreshRoutes(), refreshLogs(), loadActivity(), loadProducts(), loadUsers()]);
+    try {
+      await Promise.all([refreshRoutes(), refreshLogs(), refreshMetrics(), loadUsers(), loadProducts()]);
+      renderIcons();
+    } catch (err) {
+      alert('Gagal refresh data: ' + err.message);
+    }
   };
 
   $('loginForm').addEventListener('submit', async (e) => {
@@ -539,19 +763,26 @@ const appHtml = `<!DOCTYPE html>
     if (!token) return alert('Admin token wajib diisi');
     sessionStorage.setItem('adminToken', token);
     try {
-      await api('/api/admin/routes');
+      await api('/api/admin/metrics');
       $('loginOverlay').classList.add('hidden');
       $('mainApp').classList.remove('hidden');
       await refreshData();
-      renderIcons();
+      switchTab('dashboard');
     } catch (err) {
-      alert('Token admin tidak valid: ' + err.message);
       sessionStorage.removeItem('adminToken');
+      alert('Token admin tidak valid: ' + err.message);
     }
   });
 
   $('searchRoutes').addEventListener('input', refreshRoutes);
   $('filterMethod').addEventListener('change', refreshRoutes);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeRouteModal();
+  });
+
+  applyTheme();
+  renderIcons();
 
   if (sessionStorage.getItem('adminToken')) {
     $('adminToken').value = sessionStorage.getItem('adminToken');
