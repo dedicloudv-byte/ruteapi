@@ -1,5 +1,5 @@
 name = "api-relay-worker"
-main = "src/worker.js"
+main = "SRC/worker.js"
 compatibility_date = "2025-01-01"
 
 [vars]

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/worker.js"
+    "check": "node --check SRC/worker.js"
   },
   "devDependencies": {
     "wrangler": "^3.99.0"
