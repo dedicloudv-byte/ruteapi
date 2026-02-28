@@ -1,4 +1,4 @@
-name = "api-relay-worker"
+name = "ruteapi"
 main = "SRC/worker.js"
 compatibility_date = "2025-01-01"
 
