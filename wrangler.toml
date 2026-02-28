@@ -1,0 +1,10 @@
+name = "api-relay-worker"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+ADMIN_TOKEN = "14cdb9b4-de01-3faa-aff5-65bc2f771745"
+
+[[r2_buckets]]
+binding = "vpsai"
+bucket_name = "vpsai"
